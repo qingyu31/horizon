@@ -1,6 +1,21 @@
 # horizon
-high performance memory cache.
 
-make it smarter when data cached is out of time.
+### introduce
+smart high performance memory cache with high concurrent.
 
-this project is testing and in verification.
+horizon has much better performance and protects upstreams when refreshing.
+
+you can visit remote data not change often just like to visit local data.
+
+### benchmark
+goos: darwin
+
+goarch: amd64
+
+pkg: github.com/qingyu31/horizon/benchmark
+
+BenchmarkHorizon-4
+
+1000000	       538 ns/op
+
+max time cost per request less then 1 millisecond

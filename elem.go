@@ -35,3 +35,7 @@ func (e *elem) LastModified() int64 {
 func (e *elem) Expireat() int64 {
 	return e.expireat
 }
+
+func (e *elem) Expired() bool {
+	return UnixMilli() <= e.expireat
+}

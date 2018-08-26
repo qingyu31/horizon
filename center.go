@@ -39,23 +39,12 @@ func (c *center) RemoveValue(v *value) {
 }
 
 func (c *center) daemon() {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second * 30)
 	for {
 		select {
 		case <-ticker.C:
-			/*c.factorys.Range(func(k, v interface{}) bool {
+			c.factorys.Range(func(k, v interface{}) bool {
 				go v.(*factory).Recycle()
-				return true
-			})*/
-			c.values.Range(func(k, v interface{}) bool {
-				vl, ok := v.(*value)
-				if !ok {
-					c.values.Delete(k)
-					return true
-				}
-				if !vl.Idle() {
-					go vl.tryRefresh()
-				}
 				return true
 			})
 		}

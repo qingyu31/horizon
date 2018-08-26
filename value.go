@@ -17,8 +17,6 @@ type value struct {
 	New func() (interface{}, error)
 	//TTL is time to live measured by millisecond. only set before use.
 	TTL int64
-	//Timeliness means if data is sensitive to timeliness.
-	Timeliness bool
 	//em is a Pointer to elem. use unsafe.Pointer to keep atomic.
 	//properties in elem is read only.
 	emp unsafe.Pointer
@@ -58,43 +56,30 @@ func (v *value) Close() {
 	valuePool.Put(v)
 }
 
-//Idle return if a value not visited for a period.
-func (v *value) Idle() bool {
-	now := UnixMilli()
-	if now < v.Expireat() {
-		return false
-	}
-	return now-atomic.LoadInt64(&v.lastVisited) > v.TTL*4
-}
-
 //Get return inner data no matter expired and try to refresh if expired.
 func (v *value) Get(ctx context.Context) (value interface{}, exists bool) {
 	now := UnixMilli()
 	defer atomic.AddInt64(&v.cntVisit, 1)
 	defer atomic.StoreInt64(&v.lastVisited, now)
 	em := v.getElem()
-	if nil == em && nil == v.New {
-		return nil, false
+	if nil == v.New {
+		if nil == em {
+			return nil, false
+		}
+		return em.Get(), !em.Expired()
 	}
-	if (v.Idle() || nil == em) && nil != v.New {
+	if em == nil || em.Expired() {
 		v.doRefresh()
 		em = v.getElem()
-		if em ==nil{
-			return nil,false
+		if em == nil {
+			return nil, false
 		}
-		return em.Get(),true
+		return em.Get(), !em.Expired()
 	}
-	expireat := v.Expireat()
-	if now > expireat && nil != v.New {
-		if v.Timeliness {
-			v.doRefresh()
-		} else if now-expireat < v.TTL*4 && now-expireat < v.TTL+60000 {
-			go v.tryRefresh()
-		} else {
-			v.tryRefresh()
-		}
+	if v.NeedRefresh() {
+		go v.tryRefresh()
 	}
-	return em.Get(), true
+	return em.Get(), !em.Expired()
 }
 
 func (v *value) Expireat() int64 {
@@ -105,8 +90,21 @@ func (v *value) Expireat() int64 {
 	return em.Expireat()
 }
 
+func (v *value) Expired() bool {
+	em := v.getElem()
+	if em == nil {
+		return true
+	}
+	return em.Expired()
+}
+
+func (v *value) NeedRefresh() bool {
+	return v.Expireat()-UnixMilli() < v.TTL/2
+}
+
 //tryRefresh will try to fresh when others are not refreshing.
 func (v *value) tryRefresh() {
+	println("refresh")
 	if v.lock.Pending() {
 		return
 	}
