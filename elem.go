@@ -10,7 +10,8 @@ var elemPool = sync.Pool{New: func() interface{} { return new(elem) }}
 type elem struct {
 	data         interface{}
 	lastModified int64
-	expireat     int64
+	refreshAt    int64
+	expireAt     int64
 }
 
 func (e *elem) Init(x interface{}) {
@@ -32,10 +33,14 @@ func (e *elem) LastModified() int64 {
 	return e.lastModified
 }
 
-func (e *elem) Expireat() int64 {
-	return e.expireat
+func (e *elem) ExpireAt() int64 {
+	return e.expireAt
 }
 
-func (e *elem) Expired() bool {
-	return UnixMilli() <= e.expireat
+func (e *elem) Expired(stamp int64) bool {
+	return stamp > e.expireAt
+}
+
+func (e *elem) NeedRefresh(stamp int64) bool {
+	return stamp <= e.refreshAt
 }

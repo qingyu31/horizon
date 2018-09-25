@@ -22,7 +22,7 @@ func newFuncWithSpeed(speed int64) func() (interface{}, error) {
 		if rd%100 == 0 {
 			return nil, errors.New("randomError")
 		}
-		return UnixMilli(), nil
+		return timestamp(), nil
 	}
 }
 
@@ -44,9 +44,11 @@ func testValueWithSpeed(b *testing.B, speed int64) {
 	vl := NewValue()
 	vl.New = newFuncWithSpeed(speed)
 	vl.TTL = TEST_TTL
+	vl.RefreshInterval = TEST_TTL / 10
 	ctx := context.Background()
 	//start with warm
 	vl.Get(ctx)
+	b.ResetTimer()
 	var wg sync.WaitGroup
 	s := time.Now()
 	var max int64 = 0
@@ -54,26 +56,27 @@ func testValueWithSpeed(b *testing.B, speed int64) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			start := UnixMilli()
+			start := timestamp()
 			r, ok := vl.Get(ctx)
 			if !ok {
 				return
 			}
-			cost := UnixMilli() - start
-			fmt.Printf("get speed:%d %d\n", i, cost)
+			cost := timestamp() - start
 			if cost > max {
 				max = cost
 			}
 			if start-r.(int64) > TEST_TTL+speed*2 {
 				fmt.Printf("data too old:%d %d %d\n", i, start, r.(int64))
 				b.Fail()
+				return
 			}
 			if cost > speed {
 				fmt.Printf("get too slow:%d %d\n", i, cost)
 				b.Fail()
+				return
 			}
 		}(i)
-		time.Sleep(time.Microsecond)
+		time.Sleep(time.Nanosecond)
 	}
 	wg.Wait()
 	fmt.Printf("average:%v, max:%v\n", time.Now().Sub(s)/time.Duration(b.N), time.Millisecond*time.Duration(max))

@@ -24,14 +24,14 @@ func BenchmarkHorizon(b *testing.B) {
 		atomic.AddInt64(&refreshCount, 1)
 		return testNew(), nil
 	}
+	f.Get(context.Background(), "test")
 	b.N = N
 	b.ReportAllocs()
 	b.ResetTimer()
-	f.Get(context.Background(), "test")
 	var wg sync.WaitGroup
 	for i := 0; i < b.N; i++ {
 		wg.Add(1)
-		func() {
+		go func() {
 			defer wg.Done()
 			start:=time.Now()
 			atomic.AddInt64(&getCount, 1)
@@ -41,6 +41,7 @@ func BenchmarkHorizon(b *testing.B) {
 				maxCost = cost
 			}
 		}()
+		time.Sleep(time.Nanosecond)
 	}
 	wg.Wait()
 	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n",getCount,refreshCount,maxCost)

@@ -7,9 +7,10 @@ import (
 
 //factory produce,cache and refresh data.
 type factory struct {
-	id  string
-	kv  sync.Map
-	ttl int64
+	id              string
+	kv              sync.Map
+	ttl             int64
+	RefreshInterval int64
 	//New is function to produce data.
 	//it should be set before use.
 	New func(interface{}) (interface{}, error)
@@ -21,7 +22,6 @@ func NewFactory(id string, ttl int64) *factory {
 	ft := new(factory)
 	ft.id = id
 	ft.ttl = ttl
-	getCenter().AddFactory(id, ft)
 	return ft
 }
 
@@ -37,21 +37,24 @@ func (f *factory) Get(ctx context.Context, key interface{}) (interface{}, bool) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	x, ok = f.kv.Load(key)
-	if ok&& x!=nil {
+	if ok && x != nil {
 		return x.(*value).Get(ctx)
 	}
 	f.kv.Store(key, f.newValue(key))
 	x, ok = f.kv.Load(key)
-	if ok && x!=nil {
+	if ok && x != nil {
 		return x.(*value).Get(ctx)
 	}
 	return nil, false
 }
 
 func (f *factory) newValue(key interface{}) *value {
-	println("newValue")
 	vl := NewValue()
 	vl.TTL = f.ttl
+	vl.RefreshInterval = f.RefreshInterval
+	if vl.RefreshInterval <= 0 {
+		vl.RefreshInterval = vl.TTL
+	}
 	vl.New = func() (interface{}, error) { return f.New(key) }
 	return vl
 }

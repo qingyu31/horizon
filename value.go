@@ -17,13 +17,11 @@ type value struct {
 	New func() (interface{}, error)
 	//TTL is time to live measured by millisecond. only set before use.
 	TTL int64
+	//Refresh interval is interval between doing refresh.
+	RefreshInterval int64
 	//em is a Pointer to elem. use unsafe.Pointer to keep atomic.
 	//properties in elem is read only.
 	emp unsafe.Pointer
-	//lastVisited is the time last visited measured by millisecond.
-	lastVisited int64
-	//cntVisited is the counter of visit.
-	cntVisit int64
 	//lock is a non-block lock to confirm only one goroutine refreshing.
 	lock nonblock
 	//lastRefresh record last refresh time to forbidden refresh too often.
@@ -47,47 +45,43 @@ func (v *value) Init() {
 	defer v.mu.Unlock()
 	v.setElem(nil)
 	v.lastRefresh = 0
-	getCenter().AddValue(v)
 }
 
 //value should be closed after use.
 func (v *value) Close() {
-	getCenter().RemoveValue(v)
 	valuePool.Put(v)
 }
 
-//Get return inner data no matter expired and try to refresh if expired.
+//Get return inner data living and try to refresh.
 func (v *value) Get(ctx context.Context) (value interface{}, exists bool) {
-	now := UnixMilli()
-	defer atomic.AddInt64(&v.cntVisit, 1)
-	defer atomic.StoreInt64(&v.lastVisited, now)
+	now := timestamp()
 	em := v.getElem()
 	if nil == v.New {
 		if nil == em {
 			return nil, false
 		}
-		return em.Get(), !em.Expired()
+		return em.Get(), !em.Expired(now)
 	}
-	if em == nil || em.Expired() {
+	if nil == em || em.Expired(now) {
 		v.doRefresh()
 		em = v.getElem()
 		if em == nil {
 			return nil, false
 		}
-		return em.Get(), !em.Expired()
+		return em.Get(), !em.Expired(now)
 	}
-	if v.NeedRefresh() {
+	if em.NeedRefresh(now) {
 		go v.tryRefresh()
 	}
-	return em.Get(), !em.Expired()
+	return em.Get(), !em.Expired(now)
 }
 
-func (v *value) Expireat() int64 {
+func (v *value) ExpireAt() int64 {
 	em := v.getElem()
 	if em == nil {
 		return 0
 	}
-	return em.Expireat()
+	return em.ExpireAt()
 }
 
 func (v *value) Expired() bool {
@@ -95,16 +89,11 @@ func (v *value) Expired() bool {
 	if em == nil {
 		return true
 	}
-	return em.Expired()
-}
-
-func (v *value) NeedRefresh() bool {
-	return v.Expireat()-UnixMilli() < v.TTL/2
+	return em.Expired(timestamp())
 }
 
 //tryRefresh will try to fresh when others are not refreshing.
 func (v *value) tryRefresh() {
-	println("refresh")
 	if v.lock.Pending() {
 		return
 	}
@@ -119,11 +108,12 @@ func (v *value) tryRefresh() {
 func (v *value) doRefresh() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	now := UnixMilli()
-	if now < v.Expireat() {
+	now := timestamp()
+	if now - v.lastRefresh < MIN_REFRESH_INTVAL {
 		return
 	}
-	if now-v.lastRefresh < MIN_REFRESH_INTVAL {
+	em := v.getElem()
+	if em != nil && !em.Expired(now) {
 		return
 	}
 	v.lastRefresh = now
@@ -139,9 +129,14 @@ func (v *value) Refresh() error {
 	if er != nil {
 		return er
 	}
+	now := timestamp()
 	em := elemPool.Get().(*elem)
 	em.Init(nv)
-	em.expireat = UnixMilli() + v.TTL
+	em.expireAt = now + v.TTL
+	em.refreshAt = now + v.RefreshInterval
+	if v.RefreshInterval <= 0 {
+		em.refreshAt = em.expireAt
+	}
 	v.setElem(em)
 	return nil
 }

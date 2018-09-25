@@ -2,6 +2,6 @@ package horizon
 
 import "time"
 
-func UnixMilli() int64 {
+func timestamp() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
