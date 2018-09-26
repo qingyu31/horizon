@@ -1,6 +1,7 @@
 package horizon
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -43,4 +44,27 @@ func (e *elem) Expired(stamp int64) bool {
 
 func (e *elem) NeedRefresh(stamp int64) bool {
 	return stamp <= e.refreshAt
+}
+
+func (e *elem) MarshalBinary() ([]byte, error) {
+	var exp elemExport
+	exp.Data = e.data
+	exp.ExpireAt = e.expireAt
+	return json.Marshal(exp)
+}
+
+func (e *elem) UnmarshalBinary(b []byte) error {
+	var exp elemExport
+	err := json.Unmarshal(b, &exp)
+	if nil != err {
+		return err
+	}
+	e.data = exp.Data
+	e.expireAt = exp.ExpireAt
+	return nil
+}
+
+type elemExport struct {
+	Data     interface{} `json:"data"`
+	ExpireAt int64       `json:"expire_at"`
 }

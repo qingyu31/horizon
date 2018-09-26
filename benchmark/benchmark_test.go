@@ -17,10 +17,10 @@ const N = 1000000
 const TTL = 2000
 
 func BenchmarkHorizon(b *testing.B) {
-	var refreshCount,getCount int64
+	var refreshCount, getCount int64
 	var maxCost time.Duration
-	f := horizon.NewFactory("benchmark", TTL)
-	f.New = func(i interface{}) (interface{}, error) {
+	f := horizon.Factory{TTL: TTL}
+	f.New = func(ctx context.Context, i interface{}) (interface{}, error) {
 		atomic.AddInt64(&refreshCount, 1)
 		return testNew(), nil
 	}
@@ -33,7 +33,7 @@ func BenchmarkHorizon(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			start:=time.Now()
+			start := time.Now()
 			atomic.AddInt64(&getCount, 1)
 			f.Get(context.Background(), "test")
 			cost := time.Now().Sub(start)
@@ -41,10 +41,9 @@ func BenchmarkHorizon(b *testing.B) {
 				maxCost = cost
 			}
 		}()
-		time.Sleep(time.Nanosecond)
 	}
 	wg.Wait()
-	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n",getCount,refreshCount,maxCost)
+	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n", getCount, refreshCount, maxCost)
 }
 
 func BenchmarkSyncMap(b *testing.B) {
@@ -73,7 +72,7 @@ func BenchmarkSyncMap(b *testing.B) {
 		}()
 	}
 	wg.Wait()
-	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n",getCount,refreshCount,maxCost)
+	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n", getCount, refreshCount, maxCost)
 }
 
 func testNewItem() *cache.Item {
@@ -97,11 +96,11 @@ func BenchmarkGoCache(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			atomic.AddInt64(&getCount,1)
+			atomic.AddInt64(&getCount, 1)
 			start := time.Now()
 			v, exp := pc.Get("test")
 			if v == nil || exp {
-				atomic.AddInt64(&refreshCount,1)
+				atomic.AddInt64(&refreshCount, 1)
 				pc.Set("test", testNew(), time.Millisecond*TTL)
 			}
 			cost := time.Now().Sub(start)
@@ -111,5 +110,5 @@ func BenchmarkGoCache(b *testing.B) {
 		}()
 	}
 	wg.Wait()
-	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n",getCount,refreshCount,maxCost)
+	fmt.Printf("total get count:%d, total refresh count:%d, max cost:%v\n", getCount, refreshCount, maxCost)
 }

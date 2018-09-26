@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -15,8 +16,27 @@ const TEST_CNT = 1000000
 const TEST_SPEED_NORMAL int64 = 100
 const TEST_SPEED_SLOW int64 = 1000
 
-func newFuncWithSpeed(speed int64) func() (interface{}, error) {
-	return func() (interface{}, error) {
+func TestValue_MarshalBinary(t *testing.T) {
+	ctx := context.Background()
+	vl := NewValue()
+	vl.New = newFuncWithSpeed(TEST_SPEED_NORMAL)
+	b, e := vl.MarshalBinary()
+	fmt.Println(string(b), e)
+	vl.Get(ctx)
+	b, e = vl.MarshalBinary()
+	fmt.Println(string(b), e)
+}
+
+func TestValue_UnmarshalBinary(t *testing.T) {
+	ctx := context.Background()
+	vl := NewValue()
+	data := []byte(`{"data":1537971059611,"expire_at":`+strconv.FormatInt(timestamp(),10)+`}`)
+	vl.UnmarshalBinary(data)
+	fmt.Println(vl.Get(ctx))
+}
+
+func newFuncWithSpeed(speed int64) func(context.Context) (interface{}, error) {
+	return func(ctx context.Context) (interface{}, error) {
 		rd := rand.Int63n(100)
 		//time.Sleep(time.Millisecond * time.Duration(speed+rd))
 		if rd%100 == 0 {

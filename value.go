@@ -14,7 +14,7 @@ var valuePool = sync.Pool{New: func() interface{} { return new(value) }}
 //value stores data and refreshes itself if needed.
 type value struct {
 	//New produce new data for value. only set before use.
-	New func() (interface{}, error)
+	New func(ctx context.Context) (interface{}, error)
 	//TTL is time to live measured by millisecond. only set before use.
 	TTL int64
 	//Refresh interval is interval between doing refresh.
@@ -63,15 +63,15 @@ func (v *value) Get(ctx context.Context) (value interface{}, exists bool) {
 		return em.Get(), !em.Expired(now)
 	}
 	if nil == em || em.Expired(now) {
-		v.doRefresh()
+		v.doRefresh(ctx)
 		em = v.getElem()
 		if em == nil {
 			return nil, false
 		}
 		return em.Get(), !em.Expired(now)
 	}
-	if em.NeedRefresh(now) {
-		go v.tryRefresh()
+	if em.NeedRefresh(now) || !v.lock.Pending() {
+		go v.tryRefresh(ctx)
 	}
 	return em.Get(), !em.Expired(now)
 }
@@ -93,23 +93,20 @@ func (v *value) Expired() bool {
 }
 
 //tryRefresh will try to fresh when others are not refreshing.
-func (v *value) tryRefresh() {
-	if v.lock.Pending() {
-		return
-	}
+func (v *value) tryRefresh(ctx context.Context) {
 	if !v.lock.Lock() {
 		return
 	}
 	defer v.lock.Unlock()
-	v.doRefresh()
+	v.doRefresh(ctx)
 }
 
 //doRefresh begins to refresh until others have done.
-func (v *value) doRefresh() {
+func (v *value) doRefresh(ctx context.Context) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	now := timestamp()
-	if now - v.lastRefresh < MIN_REFRESH_INTVAL {
+	if now-v.lastRefresh < MIN_REFRESH_INTVAL {
 		return
 	}
 	em := v.getElem()
@@ -117,15 +114,15 @@ func (v *value) doRefresh() {
 		return
 	}
 	v.lastRefresh = now
-	v.Refresh()
+	v.Refresh(ctx)
 }
 
 //Refresh will refresh immediately.
-func (v *value) Refresh() error {
+func (v *value) Refresh(ctx context.Context) error {
 	if nil == v.New {
 		return nil
 	}
-	nv, er := v.New()
+	nv, er := v.New(ctx)
 	if er != nil {
 		return er
 	}
@@ -136,6 +133,24 @@ func (v *value) Refresh() error {
 	em.refreshAt = now + v.RefreshInterval
 	if v.RefreshInterval <= 0 {
 		em.refreshAt = em.expireAt
+	}
+	v.setElem(em)
+	return nil
+}
+
+func (v *value) MarshalBinary() ([]byte, error) {
+	em := v.getElem()
+	if em ==nil {
+		return nil,nil
+	}
+	return em.MarshalBinary()
+}
+
+func (v *value) UnmarshalBinary(b []byte) error {
+	em := elemPool.Get().(*elem)
+	err := em.UnmarshalBinary(b)
+	if err != nil {
+		return err
 	}
 	v.setElem(em)
 	return nil
